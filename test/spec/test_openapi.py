@@ -8,6 +8,8 @@ import http.client
 import unittest
 from unittest import mock
 
+import yaml
+
 from firestone.spec import _base as spec_base
 from firestone.spec import openapi
 
@@ -842,6 +844,61 @@ class TestOpenAPIGenerate(unittest.TestCase):
         self.assertIn("/foo/{foo_key}", spec)
         self.assertIn("The get method is fabulous", spec)
         self.assertIn("1.0", spec)
+
+    @staticmethod
+    def _secured_ops(security: dict) -> dict:
+        """Generate a resource with the given security, get each operation's security."""
+        spec = yaml.safe_load(
+            openapi.generate(
+                [
+                    {
+                        "kind": "foo",
+                        "apiVersion": "1.0",
+                        "security": security,
+                        "methods": {
+                            "resource": ["get", "post"],
+                            "instance": ["get", "put"],
+                            "instance_attrs": ["get"],
+                        },
+                        "schema": {
+                            "type": "array",
+                            "key": {"name": "foo_key", "schema": {"type": "string"}},
+                            "items": {"type": "object", "properties": {"bar": {"type": "string"}}},
+                        },
+                    }
+                ],
+                "Foo API",
+                "Some Foo API",
+                "Summary of Foo API",
+                "1.0",
+            )
+        )
+        return {
+            (path, method): operation.get("security")
+            for path, ops in spec["paths"].items()
+            for method, operation in ops.items()
+        }
+
+    def test_security_without_methods_secures_every_method(self):
+        """A scheme with no per-method lists applies to every operation."""
+        ops = self._secured_ops({"scheme": {"bearer_auth": {"type": "http", "scheme": "bearer"}}})
+
+        self.assertEqual(len(ops), 5)
+        for operation, security in ops.items():
+            self.assertEqual(security, [{"bearer_auth": []}], operation)
+
+    def test_security_with_methods_secures_only_those(self):
+        """Per-method lists still secure only the methods they name."""
+        ops = self._secured_ops(
+            {
+                "scheme": {"bearer_auth": {"type": "http", "scheme": "bearer"}},
+                "resource": ["post"],
+            }
+        )
+
+        self.assertEqual(ops.pop(("/foo", "post")), [{"bearer_auth": []}])
+        for operation, security in ops.items():
+            self.assertIsNone(security, operation)
 
 
 class TestOpenAPIToSingular(unittest.TestCase):

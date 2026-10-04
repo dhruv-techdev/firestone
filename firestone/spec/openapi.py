@@ -677,8 +677,13 @@ def generate(
             and "instance" not in security
             and "instance_attrs" not in security
         ):
-            security_scheme = list(security["scheme"].keys())[0]
-            rsrc["security"] = [{security_scheme: []}]
+            # No per-method lists means the scheme secures every method
+            security = {
+                **security,
+                "resource": RSRC_HTTP_METHODS,
+                "instance": RSRC_INST_HTTP_METHODS,
+                "instance_attrs": RSRC_ATTR_HTTP_METHODS,
+            }
 
         default_query_params = rsrc.get("default_query_params", [])
         _LOGGER.debug(f"default_query_params: {default_query_params}")
